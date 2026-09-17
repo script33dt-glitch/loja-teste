@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Entrar — Casa Ateliê</title>
+<link rel="stylesheet" href="/assets/css/style.css" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container row">
+    <a href="/index.html" class="logo">Casa Ateliê</a>
+    <nav class="main-nav">
+      <a href="/index.html">Início</a>
+      <a href="/catalogo.html">Catálogo</a>
+      <a href="/carrinho.html" class="cart-link">Carrinho <span class="cart-badge">0</span></a>
+    </nav>
+  </div>
+</header>
+
+<section class="container" style="min-height:65vh; display:flex; align-items:center; justify-content:center;">
+  <div class="card" style="padding:28px; width:100%; max-width:380px;">
+    <div style="display:flex; gap:4px; background:var(--secondary); border-radius:8px; padding:4px; margin-bottom:20px;">
+      <button id="tab-login" class="btn small full" style="background:var(--card); color:var(--fg);">Entrar</button>
+      <button id="tab-signup" class="btn small full secondary">Criar conta</button>
+    </div>
+
+    <form id="auth-form">
+      <div class="field" id="name-field" style="display:none;">
+        <label>Nome</label>
+        <input id="name" />
+      </div>
+      <div class="field">
+        <label>E-mail</label>
+        <input id="email" type="email" required />
+      </div>
+      <div class="field">
+        <label>Senha</label>
+        <input id="password" type="password" minlength="6" required />
+      </div>
+      <button type="submit" class="btn full" id="submit-btn">Entrar</button>
+    </form>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <div class="container">Casa Ateliê — loja de demonstração para apresentação a clientes.</div>
+</footer>
+
+<script type="module">
+  import { supabase } from "/assets/js/supabase-client.js";
+  import { updateCartBadge, showToast } from "/assets/js/utils.js";
+
+  updateCartBadge();
+
+  const redirect = new URLSearchParams(window.location.search).get("redirect") || "/minha-conta.html";
+  let mode = "login";
+
+  const tabLogin = document.getElementById("tab-login");
+  const tabSignup = document.getElementById("tab-signup");
+  const nameField = document.getElementById("name-field");
+  const submitBtn = document.getElementById("submit-btn");
+
+  function setMode(next) {
+    mode = next;
+    const isLogin = mode === "login";
+    tabLogin.style.background = isLogin ? "var(--card)" : "transparent";
+    tabLogin.style.color = isLogin ? "var(--fg)" : "var(--muted-fg)";
+    tabSignup.style.background = !isLogin ? "var(--card)" : "transparent";
+    tabSignup.style.color = !isLogin ? "var(--fg)" : "var(--muted-fg)";
+    nameField.style.display = isLogin ? "none" : "block";
+    submitBtn.textContent = isLogin ? "Entrar" : "Criar conta";
+  }
+
+  tabLogin.addEventListener("click", () => setMode("login"));
+  tabSignup.addEventListener("click", () => setMode("signup"));
+
+  document.getElementById("auth-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const email = document.getElementById("email").value.trim();
+    const password = document.getElementById("password").value;
+    submitBtn.disabled = true;
+    try {
+      if (mode === "signup") {
+        const name = document.getElementById("name").value.trim();
+        const { error } = await supabase.auth.signUp({ email, password, options: { data: { full_name: name } } });
+        if (error) throw error;
+        showToast("Conta criada!");
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+      }
+      window.location.href = redirect;
+    } catch (err) {
+      showToast(err.message || "Não foi possível continuar.");
+      submitBtn.disabled = false;
+    }
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Finalizar compra — Casa Ateliê</title>
+<link rel="stylesheet" href="/assets/css/style.css" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container row">
+    <a href="/index.html" class="logo">Casa Ateliê</a>
+    <nav class="main-nav">
+      <a href="/index.html">Início</a>
+      <a href="/catalogo.html">Catálogo</a>
+      <a href="/minha-conta.html">Minha conta</a>
+      <a href="/carrinho.html" class="cart-link">Carrinho <span class="cart-badge">0</span></a>
+    </nav>
+  </div>
+</header>
+
+<section class="container section" id="content">
+  <p class="muted">Carregando...</p>
+</section>
+
+<footer class="site-footer">
+  <div class="container">Casa Ateliê — loja de demonstração para apresentação a clientes.</div>
+</footer>
+
+<script type="module">
+  import { supabase, getAccessToken } from "/assets/js/supabase-client.js";
+  import { getCart, cartTotalCents, clearCart, formatBRL, updateCartBadge, showToast } from "/assets/js/utils.js";
+
+  updateCartBadge();
+  const content = document.getElementById("content");
+  const items = getCart();
+
+  if (items.length === 0) {
+    content.innerHTML = `<div class="empty-state">Seu carrinho está vazio. <br/><a href="/catalogo.html" class="btn" style="margin-top:16px;">Ver produtos</a></div>`;
+  } else {
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) {
+      content.innerHTML = `
+        <div class="empty-state">
+          Você precisa entrar ou criar uma conta para finalizar a compra.
+          <br/><a href="/auth.html?redirect=/checkout.html" class="btn" style="margin-top:16px;">Entrar / Criar conta</a>
+        </div>`;
+    } else {
+      const total = cartTotalCents();
+      const shipping = total >= 29900 ? 0 : 2990;
+      const email = sessionData.session.user.email || "";
+
+      content.innerHTML = `
+        <div style="display:grid; grid-template-columns:1fr 320px; gap:40px;">
+          <div>
+            <h1>Finalizar compra</h1>
+            <form id="checkout-form">
+              <div class="field">
+                <label>Nome completo</label>
+                <input id="name" required />
+              </div>
+              <div class="field">
+                <label>E-mail</label>
+                <input id="email" type="email" value="${email}" required />
+              </div>
+              <div class="field">
+                <label>Endereço de entrega</label>
+                <textarea id="address" rows="3" required></textarea>
+              </div>
+              <button type="submit" class="btn full" id="pay-btn">Pagar ${formatBRL(total + shipping)}</button>
+            </form>
+          </div>
+          <aside class="card" style="padding:20px; height:fit-content;">
+            <p class="eyebrow">Resumo</p>
+            <div style="margin-top:12px;">
+              ${items.map((i) => `
+                <div class="summary-line">
+                  <span class="muted">${i.name}${i.variant ? ` (${i.variant})` : ""} × ${i.quantity}</span>
+                  <span>${formatBRL(i.priceCents * i.quantity)}</span>
+                </div>
+              `).join("")}
+              <div class="summary-line"><span class="muted">Frete</span><span>${shipping === 0 ? "Grátis" : formatBRL(shipping)}</span></div>
+              <div class="summary-line total"><span>Total</span><span>${formatBRL(total + shipping)}</span></div>
+            </div>
+          </aside>
+        </div>
+      `;
+
+      document.getElementById("checkout-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const payBtn = document.getElementById("pay-btn");
+        payBtn.disabled = true;
+        payBtn.textContent = "Processando...";
+        try {
+          const token = await getAccessToken();
+          const response = await fetch("/api/create-checkout", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({
+              items: items.map((i) => ({ productId: i.productId, variant: i.variant, quantity: i.quantity })),
+              customerName: document.getElementById("name").value.trim(),
+              customerEmail: document.getElementById("email").value.trim(),
+              shippingAddress: document.getElementById("address").value.trim(),
+              origin: window.location.origin,
+            }),
+          });
+          const result = await response.json();
+          if (!response.ok) throw new Error(result.error || "Não foi possível iniciar o pagamento.");
+
+          if (result.url) {
+            window.location.href = result.url;
+            return;
+          }
+          clearCart();
+          window.location.href = `/pedido.html?id=${result.orderId}&pago=1`;
+        } catch (err) {
+          showToast(err.message || "Erro ao processar pagamento.");
+          payBtn.disabled = false;
+          payBtn.textContent = `Pagar ${formatBRL(total + shipping)}`;
+        }
+      });
+    }
+  }
+</script>
+</body>
+</html>

@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pedido confirmado — Casa Ateliê</title>
+<link rel="stylesheet" href="/assets/css/style.css" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container row">
+    <a href="/index.html" class="logo">Casa Ateliê</a>
+    <nav class="main-nav">
+      <a href="/index.html">Início</a>
+      <a href="/catalogo.html">Catálogo</a>
+      <a href="/minha-conta.html">Minha conta</a>
+      <a href="/carrinho.html" class="cart-link">Carrinho <span class="cart-badge">0</span></a>
+    </nav>
+  </div>
+</header>
+
+<section class="container section" style="max-width:640px;" id="content">
+  <p class="muted text-center">Confirmando seu pedido...</p>
+</section>
+
+<footer class="site-footer">
+  <div class="container">Casa Ateliê — loja de demonstração para apresentação a clientes.</div>
+</footer>
+
+<script type="module">
+  import { getAccessToken } from "/assets/js/supabase-client.js";
+  import { formatBRL, formatDate, STATUS_LABEL, updateCartBadge } from "/assets/js/utils.js";
+
+  updateCartBadge();
+  const content = document.getElementById("content");
+  const orderId = new URLSearchParams(window.location.search).get("id");
+
+  if (!orderId) {
+    content.innerHTML = `<p class="muted text-center">Pedido não especificado.</p>`;
+  } else {
+    const token = await getAccessToken();
+    if (!token) {
+      content.innerHTML = `<p class="muted text-center">Você precisa estar logado para ver este pedido. <a href="/auth.html">Entrar</a></p>`;
+    } else {
+      try {
+        const confirmRes = await fetch("/api/confirm-payment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ orderId }),
+        });
+        const confirmResult = await confirmRes.json();
+        if (!confirmRes.ok) throw new Error(confirmResult.error || "Pedido não encontrado.");
+
+        const { supabase } = await import("/assets/js/supabase-client.js");
+        const { data: order, error } = await supabase
+          .from("orders")
+          .select("id,status,total_cents,created_at,shipping_address,order_items(id,product_name,variant,quantity,unit_price_cents)")
+          .eq("id", orderId)
+          .maybeSingle();
+        if (error || !order) throw new Error("Não foi possível carregar os detalhes do pedido.");
+
+        content.innerHTML = `
+          <div class="card text-center" style="padding:32px;">
+            <h1>${order.status === "pago" ? "Pedido confirmado!" : "Pedido recebido"}</h1>
+            <p class="muted">Pedido #${order.id.slice(0, 8)} · ${formatDate(order.created_at)}</p>
+            <span class="badge" style="margin-top:8px;">${STATUS_LABEL[order.status] ?? order.status}</span>
+
+            <div style="text-align:left; margin-top:24px; border-top:1px solid var(--border); padding-top:16px;">
+              ${order.order_items.map((item) => `
+                <div class="summary-line">
+                  <span class="muted">${item.product_name}${item.variant ? ` (${item.variant})` : ""} × ${item.quantity}</span>
+                  <span>${formatBRL(item.unit_price_cents * item.quantity)}</span>
+                </div>
+              `).join("")}
+              <div class="summary-line total"><span>Total</span><span>${formatBRL(order.total_cents)}</span></div>
+            </div>
+            <p class="muted" style="margin-top:16px; text-align:left;">Entrega para: ${order.shipping_address}</p>
+            <a href="/catalogo.html" class="btn full" style="margin-top:20px;">Continuar comprando</a>
+          </div>
+        `;
+      } catch (err) {
+        content.innerHTML = `<p class="muted text-center">${err.message}</p>`;
+      }
+    }
+  }
+</script>
+</body>
+</html>

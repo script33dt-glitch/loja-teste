@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Produto — Casa Ateliê</title>
+<link rel="stylesheet" href="/assets/css/style.css" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container row">
+    <a href="/index.html" class="logo">Casa Ateliê</a>
+    <nav class="main-nav">
+      <a href="/index.html">Início</a>
+      <a href="/catalogo.html">Catálogo</a>
+      <a href="/minha-conta.html">Minha conta</a>
+      <a href="/carrinho.html" class="cart-link">Carrinho <span class="cart-badge">0</span></a>
+    </nav>
+  </div>
+</header>
+
+<section class="container section" id="content">
+  <p class="muted">Carregando...</p>
+</section>
+
+<footer class="site-footer">
+  <div class="container">Casa Ateliê — loja de demonstração para apresentação a clientes.</div>
+</footer>
+
+<script type="module">
+  import { supabase } from "/assets/js/supabase-client.js";
+  import { formatBRL, addToCart, updateCartBadge, showToast } from "/assets/js/utils.js";
+
+  updateCartBadge();
+
+  const content = document.getElementById("content");
+  const slug = new URLSearchParams(window.location.search).get("slug");
+
+  if (!slug) {
+    content.innerHTML = `<p class="muted">Produto não especificado.</p>`;
+  } else {
+    const { data: p, error } = await supabase
+      .from("products")
+      .select("id,name,description,price_cents,compare_at_cents,images,variants,stock")
+      .eq("slug", slug)
+      .eq("active", true)
+      .maybeSingle();
+
+    if (error || !p) {
+      content.innerHTML = `<p class="muted">Produto não encontrado. <a href="/catalogo.html">Voltar ao catálogo</a></p>`;
+    } else {
+      const hasVariants = p.variants && p.variants.length > 0;
+      content.innerHTML = `
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:40px;" id="product-grid">
+          <div>
+            <img src="${p.images[0] ?? ''}" alt="${p.name}" style="width:100%; border-radius:14px; aspect-ratio:1/1; object-fit:cover; background:var(--secondary);" />
+          </div>
+          <div>
+            <h1>${p.name}</h1>
+            <p style="font-size:1.3rem; margin:8px 0 20px;">
+              ${p.compare_at_cents ? `<span class="muted" style="text-decoration:line-through; margin-right:8px;">${formatBRL(p.compare_at_cents)}</span>` : ""}
+              ${formatBRL(p.price_cents)}
+            </p>
+            <p class="muted">${p.description}</p>
+
+            ${hasVariants ? `
+              <div class="field" style="margin-top:20px;">
+                <label>Variação</label>
+                <select id="variant-select">
+                  ${p.variants.map((v) => `<option value="${v}">${v}</option>`).join("")}
+                </select>
+              </div>
+            ` : ""}
+
+            <div class="field" style="max-width:120px;">
+              <label>Quantidade</label>
+              <input type="number" id="qty" value="1" min="1" max="${Math.max(1, p.stock)}" />
+            </div>
+
+            ${p.stock > 0
+              ? `<button id="add-btn" class="btn full">Adicionar ao carrinho</button>`
+              : `<button class="btn full" disabled>Fora de estoque</button>`}
+          </div>
+        </div>
+      `;
+
+      const addBtn = document.getElementById("add-btn");
+      if (addBtn) {
+        addBtn.addEventListener("click", () => {
+          const qty = Math.max(1, parseInt(document.getElementById("qty").value || "1", 10));
+          const variant = hasVariants ? document.getElementById("variant-select").value : null;
+          addToCart({
+            productId: p.id,
+            name: p.name,
+            priceCents: p.price_cents,
+            image: p.images[0] ?? "",
+            variant,
+            quantity: qty,
+          });
+          showToast("Adicionado ao carrinho");
+        });
+      }
+    }
+  }
+</script>
+</body>
+</html>

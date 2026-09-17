@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Casa Ateliê — Decoração para sua casa</title>
+<meta name="description" content="Loja de decoração e utilidades para casa. Peça de demonstração de portfólio." />
+<link rel="stylesheet" href="/assets/css/style.css" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container row">
+    <a href="/index.html" class="logo">Casa Ateliê</a>
+    <nav class="main-nav">
+      <a href="/index.html" class="active">Início</a>
+      <a href="/catalogo.html">Catálogo</a>
+      <a href="/minha-conta.html">Minha conta</a>
+      <a href="/carrinho.html" class="cart-link">Carrinho <span class="cart-badge">0</span></a>
+    </nav>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="container">
+    <p class="eyebrow">Decoração &amp; utilidades</p>
+    <h1>Peças com alma para a sua casa</h1>
+    <p>Cerâmica artesanal, iluminação quente e têxteis naturais, selecionados para transformar qualquer ambiente.</p>
+    <a href="/catalogo.html" class="btn">Ver catálogo</a>
+  </div>
+</section>
+
+<section class="section container">
+  <div class="section-head">
+    <h2>Destaques</h2>
+    <a href="/catalogo.html" class="muted">Ver tudo →</a>
+  </div>
+  <div id="featured" class="grid cols-4">
+    <p class="muted">Carregando produtos...</p>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <div class="container">Casa Ateliê — loja de demonstração para apresentação a clientes.</div>
+</footer>
+
+<script type="module">
+  import { supabase } from "/assets/js/supabase-client.js";
+  import { formatBRL, updateCartBadge } from "/assets/js/utils.js";
+
+  updateCartBadge();
+
+  const grid = document.getElementById("featured");
+
+  const { data: products, error } = await supabase
+    .from("products")
+    .select("id,name,slug,price_cents,compare_at_cents,images")
+    .eq("active", true)
+    .eq("featured", true)
+    .limit(8);
+
+  if (error) {
+    grid.innerHTML = `<p class="muted">Não foi possível carregar os produtos.</p>`;
+  } else if (!products.length) {
+    grid.innerHTML = `<p class="muted">Nenhum produto em destaque no momento.</p>`;
+  } else {
+    grid.innerHTML = products.map((p) => `
+      <a class="product-card" href="/produto.html?slug=${p.slug}">
+        <img src="${p.images[0] ?? ''}" alt="${p.name}" loading="lazy" />
+        <div class="name">${p.name}</div>
+        <div class="price">
+          ${p.compare_at_cents ? `<span class="compare">${formatBRL(p.compare_at_cents)}</span>` : ""}
+          ${formatBRL(p.price_cents)}
+        </div>
+      </a>
+    `).join("");
+  }
+</script>
+</body>
+</html>

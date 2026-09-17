@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Carrinho — Casa Ateliê</title>
+<link rel="stylesheet" href="/assets/css/style.css" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container row">
+    <a href="/index.html" class="logo">Casa Ateliê</a>
+    <nav class="main-nav">
+      <a href="/index.html">Início</a>
+      <a href="/catalogo.html">Catálogo</a>
+      <a href="/minha-conta.html">Minha conta</a>
+      <a href="/carrinho.html" class="cart-link active">Carrinho <span class="cart-badge">0</span></a>
+    </nav>
+  </div>
+</header>
+
+<section class="container section" style="display:grid; grid-template-columns:1fr 320px; gap:40px;">
+  <div>
+    <h1>Seu carrinho</h1>
+    <div id="cart-list"></div>
+  </div>
+  <aside class="card" style="padding:20px; height:fit-content;">
+    <p class="eyebrow">Resumo</p>
+    <div id="summary" style="margin-top:12px;"></div>
+    <a href="/checkout.html" class="btn full" style="margin-top:14px;" id="checkout-link">Finalizar compra</a>
+  </aside>
+</section>
+
+<footer class="site-footer">
+  <div class="container">Casa Ateliê — loja de demonstração para apresentação a clientes.</div>
+</footer>
+
+<script type="module">
+  import { getCart, setQuantity, removeFromCart, formatBRL, cartTotalCents, updateCartBadge } from "/assets/js/utils.js";
+
+  updateCartBadge();
+
+  const listEl = document.getElementById("cart-list");
+  const summaryEl = document.getElementById("summary");
+  const checkoutLink = document.getElementById("checkout-link");
+
+  function render() {
+    const items = getCart();
+
+    if (items.length === 0) {
+      listEl.innerHTML = `<div class="empty-state">Seu carrinho está vazio.<br/><a href="/catalogo.html" class="btn" style="margin-top:16px;">Ver produtos</a></div>`;
+      summaryEl.innerHTML = "";
+      checkoutLink.style.display = "none";
+      return;
+    }
+
+    checkoutLink.style.display = "inline-flex";
+
+    listEl.innerHTML = items.map((item) => `
+      <div class="cart-row" data-id="${item.productId}" data-variant="${item.variant ?? ''}">
+        <img src="${item.image}" alt="${item.name}" />
+        <div class="info">
+          <div style="font-weight:500;">${item.name}${item.variant ? ` (${item.variant})` : ""}</div>
+          <div class="muted">${formatBRL(item.priceCents)}</div>
+        </div>
+        <input type="number" class="qty-input" min="1" value="${item.quantity}" />
+        <button class="btn outline small remove-btn">Remover</button>
+      </div>
+    `).join("");
+
+    const total = cartTotalCents();
+    const shipping = total >= 29900 ? 0 : 2990;
+    summaryEl.innerHTML = `
+      <div class="summary-line"><span class="muted">Subtotal</span><span>${formatBRL(total)}</span></div>
+      <div class="summary-line"><span class="muted">Frete</span><span>${shipping === 0 ? "Grátis" : formatBRL(shipping)}</span></div>
+      <div class="summary-line total"><span>Total</span><span>${formatBRL(total + shipping)}</span></div>
+    `;
+
+    listEl.querySelectorAll(".cart-row").forEach((row) => {
+      const id = row.dataset.id;
+      const variant = row.dataset.variant || null;
+      row.querySelector(".qty-input").addEventListener("change", (e) => {
+        setQuantity(id, variant, Math.max(1, parseInt(e.target.value || "1", 10)));
+        render();
+      });
+      row.querySelector(".remove-btn").addEventListener("click", () => {
+        removeFromCart(id, variant);
+        render();
+      });
+    });
+  }
+
+  render();
+</script>
+</body>
+</html>

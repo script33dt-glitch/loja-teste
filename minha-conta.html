@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Minha conta — Casa Ateliê</title>
+<link rel="stylesheet" href="/assets/css/style.css" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container row">
+    <a href="/index.html" class="logo">Casa Ateliê</a>
+    <nav class="main-nav">
+      <a href="/index.html">Início</a>
+      <a href="/catalogo.html">Catálogo</a>
+      <a href="/minha-conta.html" class="active">Minha conta</a>
+      <a href="/carrinho.html" class="cart-link">Carrinho <span class="cart-badge">0</span></a>
+    </nav>
+  </div>
+</header>
+
+<section class="container section" id="content">
+  <p class="muted">Carregando...</p>
+</section>
+
+<footer class="site-footer">
+  <div class="container">Casa Ateliê — loja de demonstração para apresentação a clientes.</div>
+</footer>
+
+<script type="module">
+  import { supabase, requireSession } from "/assets/js/supabase-client.js";
+  import { formatBRL, formatDate, STATUS_LABEL, updateCartBadge, showToast } from "/assets/js/utils.js";
+
+  updateCartBadge();
+  const content = document.getElementById("content");
+
+  const session = await requireSession("/minha-conta.html");
+  if (!session) throw new Error("redirecting");
+
+  const [{ data: orders, error }, { data: adminCheck }] = await Promise.all([
+    supabase
+      .from("orders")
+      .select("id,status,total_cents,created_at,order_items(id,product_name,variant,quantity,unit_price_cents)")
+      .eq("user_id", session.user.id)
+      .order("created_at", { ascending: false }),
+    supabase.rpc("has_role", { _user_id: session.user.id, _role: "admin" }),
+  ]);
+
+  const isAdmin = adminCheck === true;
+
+  function renderOrders() {
+    if (error) return `<p class="muted">Não foi possível carregar seus pedidos.</p>`;
+    if (!orders.length) {
+      return `<div class="empty-state">Você ainda não fez nenhum pedido.<br/><a href="/catalogo.html" class="btn" style="margin-top:16px;">Explorar produtos</a></div>`;
+    }
+    return orders.map((order) => `
+      <div class="card" style="padding:20px; margin-bottom:14px;">
+        <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+          <div>
+            <strong>Pedido #${order.id.slice(0, 8)}</strong>
+            <div class="muted">${formatDate(order.created_at)}</div>
+          </div>
+          <span class="badge">${STATUS_LABEL[order.status] ?? order.status}</span>
+        </div>
+        <div style="margin-top:10px; font-size:0.9rem;" class="muted">
+          ${order.order_items.map((i) => `${i.quantity}× ${i.product_name}${i.variant ? ` (${i.variant})` : ""}`).join("<br/>")}
+        </div>
+        <div style="text-align:right; font-weight:600; margin-top:10px;">${formatBRL(order.total_cents)}</div>
+      </div>
+    `).join("");
+  }
+
+  content.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h1>Meus pedidos</h1>
+      <div style="display:flex; gap:14px; align-items:center;">
+        ${isAdmin ? `<a href="/admin/index.html" style="color:var(--primary);">Painel admin</a>` : ""}
+        <button id="logout-btn" class="btn outline small">Sair</button>
+      </div>
+    </div>
+
+    ${!isAdmin ? `
+      <div class="card" style="padding:14px; margin:20px 0; font-size:0.9rem;" class="muted">
+        Primeira vez configurando a loja?
+        <button id="claim-admin-btn" class="btn small secondary" style="margin-left:8px;">Tornar-se administrador</button>
+        <span class="muted"> (só funciona se ainda não houver nenhum admin)</span>
+      </div>
+    ` : ""}
+
+    <div style="margin-top:24px;">${renderOrders()}</div>
+  `;
+
+  document.getElementById("logout-btn").addEventListener("click", async () => {
+    await supabase.auth.signOut();
+    window.location.href = "/index.html";
+  });
+
+  const claimBtn = document.getElementById("claim-admin-btn");
+  if (claimBtn) {
+    claimBtn.addEventListener("click", async () => {
+      claimBtn.disabled = true;
+      const { count } = await supabase.from("user_roles").select("id", { count: "exact", head: true }).eq("role", "admin");
+      if ((count ?? 0) > 0) {
+        showToast("A loja já tem um administrador.");
+        claimBtn.disabled = false;
+        return;
+      }
+      const { error: insertError } = await supabase.from("user_roles").insert({ user_id: session.user.id, role: "admin" });
+      if (insertError) {
+        showToast("Não foi possível conceder acesso: " + insertError.message);
+        claimBtn.disabled = false;
+      } else {
+        showToast("Você agora é administrador!");
+        window.location.reload();
+      }
+    });
+  }
+</script>
+</body>
+</html>
