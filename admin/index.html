@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Painel — Casa Ateliê</title>
+<link rel="stylesheet" href="/assets/css/style.css" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container row">
+    <a href="/index.html" class="logo">Casa Ateliê <span class="muted" style="font-size:0.9rem;">· admin</span></a>
+    <a href="/minha-conta.html" class="muted" style="text-decoration:none;">Ver como cliente</a>
+  </div>
+  <div class="container admin-tabs">
+    <a href="/admin/index.html" class="active">Painel</a>
+    <a href="/admin/produtos.html">Produtos</a>
+    <a href="/admin/categorias.html">Categorias</a>
+    <a href="/admin/pedidos.html">Pedidos</a>
+  </div>
+</header>
+
+<main class="container section" id="content">
+  <p class="muted">Verificando acesso...</p>
+</main>
+
+<script type="module">
+  import { requireAdmin } from "/assets/js/admin-guard.js";
+  import { supabase } from "/assets/js/supabase-client.js";
+  import { formatBRL, formatDate, STATUS_LABEL } from "/assets/js/utils.js";
+
+  const session = await requireAdmin();
+  if (!session) throw new Error("redirecting");
+
+  const content = document.getElementById("content");
+
+  const [{ data: orders }, { count: productCount }] = await Promise.all([
+    supabase.from("orders").select("id,status,total_cents,created_at,customer_name").order("created_at", { ascending: false }),
+    supabase.from("products").select("id", { count: "exact", head: true }),
+  ]);
+
+  const totalOrders = orders?.length ?? 0;
+  const pendingOrders = orders?.filter((o) => o.status === "pendente").length ?? 0;
+  const revenueCents = orders?.filter((o) => o.status !== "cancelado").reduce((s, o) => s + o.total_cents, 0) ?? 0;
+  const recent = (orders ?? []).slice(0, 6);
+
+  content.innerHTML = `
+    <h1>Painel</h1>
+    <div class="stat-cards" style="margin-top:20px;">
+      <div class="card stat-card"><div class="muted">Pedidos</div><div class="value">${totalOrders}</div></div>
+      <div class="card stat-card"><div class="muted">Pendentes</div><div class="value">${pendingOrders}</div></div>
+      <div class="card stat-card"><div class="muted">Faturamento</div><div class="value">${formatBRL(revenueCents)}</div></div>
+      <div class="card stat-card"><div class="muted">Produtos</div><div class="value">${productCount ?? 0}</div></div>
+    </div>
+
+    <h2 style="margin-top:36px;">Pedidos recentes</h2>
+    <div class="card" style="margin-top:12px;">
+      ${recent.length === 0 ? `<p class="muted" style="padding:20px;">Nenhum pedido ainda.</p>` : recent.map((o) => `
+        <div style="display:flex; justify-content:space-between; padding:14px 18px; border-bottom:1px solid var(--border);">
+          <div>
+            <div style="font-weight:500;">${o.customer_name ?? "Cliente"}</div>
+            <div class="muted">${formatDate(o.created_at)}</div>
+          </div>
+          <div style="display:flex; align-items:center; gap:12px;">
+            <span class="badge">${STATUS_LABEL[o.status] ?? o.status}</span>
+            <strong>${formatBRL(o.total_cents)}</strong>
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `;
+</script>
+</body>
+</html>

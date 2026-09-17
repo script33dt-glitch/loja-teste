@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Produtos — Admin — Casa Ateliê</title>
+<link rel="stylesheet" href="/assets/css/style.css" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container row">
+    <a href="/index.html" class="logo">Casa Ateliê <span class="muted" style="font-size:0.9rem;">· admin</span></a>
+    <a href="/minha-conta.html" class="muted" style="text-decoration:none;">Ver como cliente</a>
+  </div>
+  <div class="container admin-tabs">
+    <a href="/admin/index.html">Painel</a>
+    <a href="/admin/produtos.html" class="active">Produtos</a>
+    <a href="/admin/categorias.html">Categorias</a>
+    <a href="/admin/pedidos.html">Pedidos</a>
+  </div>
+</header>
+
+<main class="container section">
+  <div style="display:flex; justify-content:space-between; align-items:center;">
+    <h1>Produtos</h1>
+    <button id="new-btn" class="btn">Novo produto</button>
+  </div>
+
+  <div class="card" style="margin-top:20px; overflow-x:auto;">
+    <table class="admin-table">
+      <thead>
+        <tr><th>Nome</th><th>Preço</th><th>Estoque</th><th>Ativo</th><th></th></tr>
+      </thead>
+      <tbody id="rows"><tr><td colspan="5" class="muted">Verificando acesso...</td></tr></tbody>
+    </table>
+  </div>
+</main>
+
+<div id="modal-root"></div>
+
+<script type="module">
+  import { requireAdmin } from "/assets/js/admin-guard.js";
+  import { supabase } from "/assets/js/supabase-client.js";
+  import { formatBRL, showToast } from "/assets/js/utils.js";
+
+  const session = await requireAdmin();
+  if (!session) throw new Error("redirecting");
+
+  const rowsEl = document.getElementById("rows");
+  const modalRoot = document.getElementById("modal-root");
+  let categories = [];
+
+  function slugify(text) {
+    return text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  }
+
+  async function loadCategories() {
+    const { data } = await supabase.from("categories").select("id,name").order("name");
+    categories = data ?? [];
+  }
+
+  async function loadProducts() {
+    const { data, error } = await supabase.from("products").select("*").order("created_at", { ascending: false });
+    if (error) {
+      rowsEl.innerHTML = `<tr><td colspan="5" class="muted">Erro ao carregar produtos.</td></tr>`;
+      return;
+    }
+    rowsEl.innerHTML = data.length
+      ? data.map((p) => `
+        <tr>
+          <td>${p.name}</td>
+          <td>${formatBRL(p.price_cents)}</td>
+          <td>${p.stock}</td>
+          <td>${p.active ? "Sim" : "Não"}</td>
+          <td style="text-align:right;">
+            <button class="btn small outline edit-btn" data-id="${p.id}">Editar</button>
+            <button class="btn small danger del-btn" data-id="${p.id}">Excluir</button>
+          </td>
+        </tr>
+      `).join("")
+      : `<tr><td colspan="5" class="muted">Nenhum produto cadastrado.</td></tr>`;
+
+    rowsEl.querySelectorAll(".edit-btn").forEach((btn) =>
+      btn.addEventListener("click", () => openModal(data.find((p) => p.id === btn.dataset.id)))
+    );
+    rowsEl.querySelectorAll(".del-btn").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        if (!confirm("Excluir este produto?")) return;
+        const { error: delError } = await supabase.from("products").delete().eq("id", btn.dataset.id);
+        if (delError) showToast("Erro: " + delError.message);
+        loadProducts();
+      })
+    );
+  }
+
+  function openModal(product) {
+    const images = product ? [...product.images] : [];
+    modalRoot.innerHTML = `
+      <div class="modal-overlay">
+        <div class="modal">
+          <div class="modal-head">
+            <h2>${product ? "Editar produto" : "Novo produto"}</h2>
+            <button id="close-modal">&times;</button>
+          </div>
+          <form id="product-form">
+            <div class="field">
+              <label>Nome</label>
+              <input id="f-name" required value="${product?.name ?? ""}" />
+            </div>
+            <div class="field">
+              <label>Identificador (slug)</label>
+              <input id="f-slug" required value="${product?.slug ?? ""}" />
+            </div>
+            <div class="field">
+              <label>Descrição</label>
+              <textarea id="f-desc" rows="3">${product?.description ?? ""}</textarea>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+              <div class="field">
+                <label>Preço (R$)</label>
+                <input id="f-price" type="number" step="0.01" min="0" required value="${product ? (product.price_cents / 100).toFixed(2) : ""}" />
+              </div>
+              <div class="field">
+                <label>Estoque</label>
+                <input id="f-stock" type="number" min="0" value="${product?.stock ?? 20}" />
+              </div>
+            </div>
+            <div class="field">
+              <label>Categoria</label>
+              <select id="f-category">
+                <option value="">Sem categoria</option>
+                ${categories.map((c) => `<option value="${c.id}" ${c.id === product?.category_id ? "selected" : ""}>${c.name}</option>`).join("")}
+              </select>
+            </div>
+            <div class="field">
+              <label>Imagens</label>
+              <div class="thumb-row" id="thumb-row">
+                ${images.map((src) => `<div class="thumb"><img src="${src}" /><button type="button" class="remove" data-src="${src}">&times;</button></div>`).join("")}
+              </div>
+              <input type="file" id="f-image" accept="image/*" />
+              <p class="muted" id="upload-status" style="font-size:0.8rem; margin-top:4px;"></p>
+            </div>
+            <label style="display:flex; align-items:center; gap:8px; font-weight:400; font-size:0.9rem;">
+              <input type="checkbox" id="f-featured" style="width:auto;" ${product?.featured ? "checked" : ""} /> Destaque na página inicial
+            </label>
+            <label style="display:flex; align-items:center; gap:8px; font-weight:400; font-size:0.9rem; margin-top:6px;">
+              <input type="checkbox" id="f-active" style="width:auto;" ${product?.active !== false ? "checked" : ""} /> Ativo (visível na loja)
+            </label>
+            <button type="submit" class="btn full" style="margin-top:16px;" id="save-btn">Salvar produto</button>
+          </form>
+        </div>
+      </div>
+    `;
+
+    document.getElementById("close-modal").addEventListener("click", () => (modalRoot.innerHTML = ""));
+
+    const nameInput = document.getElementById("f-name");
+    const slugInput = document.getElementById("f-slug");
+    if (!product) {
+      nameInput.addEventListener("input", () => (slugInput.value = slugify(nameInput.value)));
+    }
+
+    function bindThumbRemovers() {
+      modalRoot.querySelectorAll(".thumb .remove").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const idx = images.indexOf(btn.dataset.src);
+          if (idx >= 0) images.splice(idx, 1);
+          btn.closest(".thumb").remove();
+        });
+      });
+    }
+    bindThumbRemovers();
+
+    document.getElementById("f-image").addEventListener("change", async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const statusEl = document.getElementById("upload-status");
+      statusEl.textContent = "Enviando imagem...";
+      const path = `${Date.now()}-${slugify(file.name)}`;
+      const { error: uploadError } = await supabase.storage.from("produtos").upload(path, file, { upsert: false });
+      if (uploadError) {
+        statusEl.textContent = "Erro ao enviar imagem: " + uploadError.message;
+        return;
+      }
+      const { data: pub } = supabase.storage.from("produtos").getPublicUrl(path);
+      images.push(pub.publicUrl);
+      const thumbRow = document.getElementById("thumb-row");
+      const div = document.createElement("div");
+      div.className = "thumb";
+      div.innerHTML = `<img src="${pub.publicUrl}" /><button type="button" class="remove" data-src="${pub.publicUrl}">&times;</button>`;
+      thumbRow.appendChild(div);
+      bindThumbRemovers();
+      statusEl.textContent = "Imagem enviada.";
+    });
+
+    document.getElementById("product-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const saveBtn = document.getElementById("save-btn");
+      saveBtn.disabled = true;
+      const payload = {
+        name: nameInput.value.trim(),
+        slug: slugInput.value.trim(),
+        description: document.getElementById("f-desc").value.trim(),
+        price_cents: Math.round(Number(document.getElementById("f-price").value) * 100),
+        stock: Number(document.getElementById("f-stock").value),
+        category_id: document.getElementById("f-category").value || null,
+        images,
+        featured: document.getElementById("f-featured").checked,
+        active: document.getElementById("f-active").checked,
+      };
+      const query = product
+        ? supabase.from("products").update(payload).eq("id", product.id)
+        : supabase.from("products").insert(payload);
+      const { error } = await query;
+      if (error) {
+        showToast("Erro ao salvar: " + error.message);
+        saveBtn.disabled = false;
+      } else {
+        modalRoot.innerHTML = "";
+        loadProducts();
+      }
+    });
+  }
+
+  document.getElementById("new-btn").addEventListener("click", () => openModal(null));
+
+  await loadCategories();
+  await loadProducts();
+</script>
+</body>
+</html>

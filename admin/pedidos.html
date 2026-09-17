@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pedidos — Admin — Casa Ateliê</title>
+<link rel="stylesheet" href="/assets/css/style.css" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container row">
+    <a href="/index.html" class="logo">Casa Ateliê <span class="muted" style="font-size:0.9rem;">· admin</span></a>
+    <a href="/minha-conta.html" class="muted" style="text-decoration:none;">Ver como cliente</a>
+  </div>
+  <div class="container admin-tabs">
+    <a href="/admin/index.html">Painel</a>
+    <a href="/admin/produtos.html">Produtos</a>
+    <a href="/admin/categorias.html">Categorias</a>
+    <a href="/admin/pedidos.html" class="active">Pedidos</a>
+  </div>
+</header>
+
+<main class="container section">
+  <h1>Pedidos</h1>
+  <div id="list" style="margin-top:20px;"><p class="muted">Verificando acesso...</p></div>
+</main>
+
+<script type="module">
+  import { requireAdmin } from "/assets/js/admin-guard.js";
+  import { supabase } from "/assets/js/supabase-client.js";
+  import { formatBRL, formatDate, showToast } from "/assets/js/utils.js";
+
+  const session = await requireAdmin();
+  if (!session) throw new Error("redirecting");
+
+  const STATUS_OPTIONS = ["pendente", "pago", "enviado", "entregue", "cancelado"];
+  const STATUS_LABEL = { pendente: "Pendente", pago: "Pago", enviado: "Enviado", entregue: "Entregue", cancelado: "Cancelado" };
+  const listEl = document.getElementById("list");
+
+  async function load() {
+    const { data: orders, error } = await supabase
+      .from("orders")
+      .select("id,status,total_cents,created_at,customer_name,customer_email,shipping_address,order_items(id,product_name,variant,quantity)")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      listEl.innerHTML = `<p class="muted">Erro ao carregar pedidos.</p>`;
+      return;
+    }
+
+    listEl.innerHTML = orders.length
+      ? orders.map((o) => `
+        <div class="card" style="padding:18px; margin-bottom:14px;">
+          <div style="display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+            <div>
+              <strong>${o.customer_name ?? "Cliente"}</strong>
+              <div class="muted">${o.customer_email ?? ""} · ${formatDate(o.created_at)}</div>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px;">
+              <select data-id="${o.id}" class="status-select">
+                ${STATUS_OPTIONS.map((s) => `<option value="${s}" ${s === o.status ? "selected" : ""}>${STATUS_LABEL[s]}</option>`).join("")}
+              </select>
+              <strong>${formatBRL(o.total_cents)}</strong>
+            </div>
+          </div>
+          <div class="muted" style="margin-top:10px; font-size:0.9rem;">
+            ${o.order_items.map((i) => `${i.quantity}× ${i.product_name}${i.variant ? ` (${i.variant})` : ""}`).join("<br/>")}
+          </div>
+          <div class="muted" style="margin-top:8px; font-size:0.85rem;">Entrega: ${o.shipping_address ?? "-"}</div>
+        </div>
+      `).join("")
+      : `<p class="muted">Nenhum pedido ainda.</p>`;
+
+    listEl.querySelectorAll(".status-select").forEach((sel) => {
+      sel.addEventListener("change", async () => {
+        const { error: updError } = await supabase.from("orders").update({ status: sel.value }).eq("id", sel.dataset.id);
+        if (updError) showToast("Erro: " + updError.message);
+      });
+    });
+  }
+
+  load();
+</script>
+</body>
+</html>

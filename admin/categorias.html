@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Categorias — Admin — Casa Ateliê</title>
+<link rel="stylesheet" href="/assets/css/style.css" />
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container row">
+    <a href="/index.html" class="logo">Casa Ateliê <span class="muted" style="font-size:0.9rem;">· admin</span></a>
+    <a href="/minha-conta.html" class="muted" style="text-decoration:none;">Ver como cliente</a>
+  </div>
+  <div class="container admin-tabs">
+    <a href="/admin/index.html">Painel</a>
+    <a href="/admin/produtos.html">Produtos</a>
+    <a href="/admin/categorias.html" class="active">Categorias</a>
+    <a href="/admin/pedidos.html">Pedidos</a>
+  </div>
+</header>
+
+<main class="container section">
+  <h1>Categorias</h1>
+
+  <form id="add-form" style="display:flex; gap:10px; margin:20px 0; max-width:420px;">
+    <input id="new-name" placeholder="Nome da categoria" required />
+    <button class="btn" type="submit">Adicionar</button>
+  </form>
+
+  <div class="card" id="list">
+    <p class="muted" style="padding:20px;">Verificando acesso...</p>
+  </div>
+</main>
+
+<script type="module">
+  import { requireAdmin } from "/assets/js/admin-guard.js";
+  import { supabase } from "/assets/js/supabase-client.js";
+  import { showToast } from "/assets/js/utils.js";
+
+  const session = await requireAdmin();
+  if (!session) throw new Error("redirecting");
+
+  const listEl = document.getElementById("list");
+
+  function slugify(text) {
+    return text.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
+  }
+
+  async function load() {
+    const { data, error } = await supabase.from("categories").select("id,name").order("name");
+    if (error) {
+      listEl.innerHTML = `<p class="muted" style="padding:20px;">Erro ao carregar categorias.</p>`;
+      return;
+    }
+    listEl.innerHTML = data.length
+      ? data.map((c) => `
+        <div style="display:flex; justify-content:space-between; padding:14px 18px; border-bottom:1px solid var(--border);">
+          <span>${c.name}</span>
+          <button class="btn outline small" data-id="${c.id}">Excluir</button>
+        </div>
+      `).join("")
+      : `<p class="muted" style="padding:20px;">Nenhuma categoria ainda.</p>`;
+
+    listEl.querySelectorAll("button[data-id]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        if (!confirm("Excluir esta categoria? Produtos vinculados ficam sem categoria.")) return;
+        const { error: delError } = await supabase.from("categories").delete().eq("id", btn.dataset.id);
+        if (delError) showToast("Erro: " + delError.message);
+        load();
+      });
+    });
+  }
+
+  document.getElementById("add-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const nameInput = document.getElementById("new-name");
+    const name = nameInput.value.trim();
+    if (!name) return;
+    const { error } = await supabase.from("categories").insert({ name, slug: slugify(name) });
+    if (error) {
+      showToast("Erro: " + error.message);
+    } else {
+      nameInput.value = "";
+      load();
+    }
+  });
+
+  load();
+</script>
+</body>
+</html>
